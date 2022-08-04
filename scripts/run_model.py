@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 """
 
 import gc
+import os
 import pathlib
 import sys
 from collections import defaultdict
@@ -15,9 +16,11 @@ import torch
 
 from fastMRI.common.args import Args
 from fastMRI.common.utils import save_qMRIs
-from training_utils.load.data_qMRI_loaders import create_testing_sense_loaders
-from training_utils.helpers import image_loss
 from scripts.train_model import load_model
+from training_utils.helpers import image_loss
+from training_utils.load.data_qMRI_loaders import create_testing_sense_loaders
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 torch.backends.cudnn.benchmark = False
 
@@ -27,7 +30,9 @@ def run_rim(args, model, data_loader):
     qMRI_RIM = defaultdict(list)
     qMRI_GT = defaultdict(list)
     qMRI_Init = defaultdict(list)
+
     for i, data in enumerate(data_loader):
+        print(i)
         R2star_map_init, S0_map_init, B0_map_init, phi_map_init, R2star_map_target, S0_map_target, \
         B0_map_target, phi_map_target, y_ksp, mask_brain, sampling_mask, TEs, sensitivity_map, fnames, slices = data
 
@@ -58,22 +63,32 @@ def run_rim(args, model, data_loader):
         for i in range(map_gt.shape[0]):
             qMRI_GT[fnames[0]].append((slices[i].numpy(), map_gt[i].numpy()))
 
-        if args.use_rim:
-            estimate = model.forward(y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1), y_ksp=y_ksp, mask_subsampling=sampling_mask, mask_brain=torch.ones_like(mask_brain), TEs=TEs, sense=sensitivity_map, metadata=[])
-            output = estimate[len(estimate)-1].to('cpu')
-        else:
-            estimate = model.forward(torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1))
-            estimate = [_.unsqueeze(0) for _ in estimate]
-            output = estimate[len(estimate)-1].to('cpu')
+        model.to(args.device)
+        with torch.no_grad():
+            if args.use_rim:
+                estimate = model.forward(
+                    y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1),
+                    y_ksp=y_ksp,
+                    mask_subsampling=sampling_mask,
+                    mask_brain=torch.ones_like(mask_brain),
+                    TEs=TEs,
+                    sense=sensitivity_map,
+                    metadata=[]
+                )
+                output = estimate[len(estimate) - 1].to('cpu')
+            else:
+                estimate = model.forward(torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1))
+                estimate = [_.unsqueeze(0) for _ in estimate]
+                output = estimate[len(estimate) - 1].to('cpu')
 
-        del estimate, y_ksp, sensitivity_map, sampling_mask
+            del estimate, y_ksp, sensitivity_map, sampling_mask
 
         print('Loss of init map: ', image_loss(map_init, map_gt, mask_brain.to('cpu'), args).detach().numpy())
         print('Loss of rim map: ', image_loss(output, map_gt, mask_brain.to('cpu'), args).detach().numpy())
 
         for i in range(output.shape[0]):
             qMRI_RIM[fnames[0]].append((slices[i].detach().numpy(), output[i].detach().numpy()))
-                
+
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -92,10 +107,11 @@ def run_rim(args, model, data_loader):
 
     return qMRI_RIM, qMRI_Init, qMRI_GT
 
-def main(args):
 
+def main(args):
     data_loader = create_testing_sense_loaders(args)
     checkpoint, model, optimizer = load_model(args.checkpoint)
+    model
     args.n_slices = checkpoint['args'].n_slices
     print('Reconstructing...')
     qMRI_RIM, qMRI_Init, qMRI_GT = run_rim(args, model, data_loader)
@@ -122,7 +138,8 @@ def create_arg_parser():
                         help="Choose to sum coils over rss or torch.sum")
     parser.add_argument('--sequence', type=str, choices=['MEGRE', 'FUTURE_SEQUENCES'], default='ME_GRE',
                         help="Choose for which sequence to compute the parameter maps")
-    parser.add_argument('--TEs', type=tuple, default=(3, 11.5, 20, 28.5), help="Echo times (/ms) in the ME_GRE sequence.")
+    parser.add_argument('--TEs', type=tuple, default=(3, 11.5, 20, 28.5),
+                        help="Echo times (/ms) in the ME_GRE sequence.")
     parser.add_argument('--loss', choices=['l1', 'mse', 'ssim'], default='mse', help='for evaluation')
     parser.add_argument('--loss_subsample', type=float, default=1., help='Sampling rate for loss mask')
 

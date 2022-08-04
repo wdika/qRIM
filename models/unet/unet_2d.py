@@ -113,12 +113,12 @@ class UnetModel2d(nn.Module):
     """
 
     def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        num_filters: int,
-        num_pool_layers: int,
-        dropout_probability: float,
+            self,
+            in_channels: int,
+            out_channels: int,
+            num_filters: int,
+            num_pool_layers: int,
+            dropout_probability: float,
     ):
         """
         Parameters

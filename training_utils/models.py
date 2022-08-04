@@ -1,4 +1,5 @@
 import torch
+
 from models.rim import RIM
 
 
@@ -28,7 +29,7 @@ class RescaleByStd_qMRI(object):
     def reverse(self, data, gamma):
         data = data * gamma
         return data
-    
+
 
 class RescaleByMax(object):
     def __init__(self, slack=1e-6):
@@ -42,7 +43,7 @@ class RescaleByMax(object):
     def reverse(self, data, gamma):
         data = data * gamma
         return data
-    
+
 
 class RIMfastMRI(torch.nn.Module):
     def __init__(self, model, preprocessor=RescaleByMax(), n_steps=8, coil_sum_method='rss'):
@@ -68,16 +69,16 @@ class RIMfastMRI(torch.nn.Module):
         """
         accumulate_eta = self.training
 
-        gamma =  torch.Tensor([[[[ 150.0]],
-                
-                                [[ 150.0]],
-                
-                                [[ 1000.0]],
-                
-                                [[ 150.0]]]])
-        
+        gamma = torch.Tensor([[[[150.0]],
+
+                               [[150.0]],
+
+                               [[1000.0]],
+
+                               [[150.0]]]])
+
         gamma = gamma.to(y.device)
-        y = y/gamma
+        y = y / gamma
 
         eta = y
         eta, hx = self.model.forward(eta, gamma, [y, y_ksp, mask_subsampling, mask_brain, TEs, sense],

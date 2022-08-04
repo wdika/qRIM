@@ -12,7 +12,7 @@ from argparse import ArgumentParser
 import h5py
 import numpy as np
 from runstats import Statistics
-from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+
 
 def mse(gt, pred):
     """ Compute Mean Squared Error (MSE) """

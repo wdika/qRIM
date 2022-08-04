@@ -13,18 +13,16 @@ import time
 
 import numpy as np
 import torch
-import torchvision
 # from torch.utils.tensorboard import SummaryWriter
 from tensorboardX import SummaryWriter
 
 from fastMRI.common.args import Args
-from fastMRI.data import transforms
-from models.rim import RIM, ConvRNN
+from models.rim import ConvRNN, RIM
 from models.unet.unet_2d import UnetModel2d
 from training_utils.helpers import image_loss
 from training_utils.linear_mapping import signal_model_forward
-from training_utils.models import RIMfastMRI
 from training_utils.load.data_qMRI_loaders import create_training_sense_loaders
+from training_utils.models import RIMfastMRI
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -68,11 +66,14 @@ def train_epoch(args, epoch, model, train_loader, optimizer, writer):
         model.zero_grad()
 
         if args.use_rim:
-            estimate = model.forward(y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1), y_ksp=y_ksp, mask_subsampling=sampling_mask, mask_brain=torch.ones_like(mask_brain), TEs=TEs, sense=sensitivity_map, metadata=[])
+            estimate = model.forward(y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1),
+                                     y_ksp=y_ksp, mask_subsampling=sampling_mask,
+                                     mask_brain=torch.ones_like(mask_brain), TEs=TEs, sense=sensitivity_map,
+                                     metadata=[])
         else:
-            args.n_steps=1
+            args.n_steps = 1
             estimate = model.forward(torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1))
-            estimate = [estimate,]
+            estimate = [estimate, ]
 
         target = torch.stack([R2star_map_target, S0_map_target, B0_map_target, phi_map_target], 1)
         if isinstance(estimate, list):
@@ -82,7 +83,7 @@ def train_epoch(args, epoch, model, train_loader, optimizer, writer):
             writer.add_scalar('Loss-S0', loss[1].item(), global_step + i)
             writer.add_scalar('Loss-B0', loss[2].item(), global_step + i)
             writer.add_scalar('Loss-phi', loss[3].item(), global_step + i)
-            loss = loss.mean() /2
+            loss = loss.mean() / 2
         else:
             loss = image_loss(estimate, target, args)
 
@@ -128,22 +129,24 @@ def evaluate(args, epoch, model, data_loader, writer):
         S0_map_init = S0_map_init.to(args.device)
         B0_map_init = B0_map_init.to(args.device)
         phi_map_init = phi_map_init.to(args.device)
-        
+
         R2star_map_target = R2star_map_target.to(args.device)
         S0_map_target = S0_map_target.to(args.device)
         B0_map_target = B0_map_target.to(args.device)
         phi_map_target = phi_map_target.to(args.device)
-        
+
         sensitivity_map = sensitivity_map.to(args.device)
         sampling_mask = sampling_mask.to(args.device)
         mask_brain = mask_brain.to(args.device)
         y_ksp = y_ksp.to(args.device)
-        
+
         if args.use_rim:
-            output = model.forward(y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1), y_ksp=y_ksp, mask_subsampling=sampling_mask, mask_brain=torch.ones_like(mask_brain), TEs=TEs, sense=sensitivity_map, metadata=[])
-            output_np = output[args.n_steps-1].to('cpu')
+            output = model.forward(y=torch.stack([R2star_map_init, S0_map_init, B0_map_init, phi_map_init], 1),
+                                   y_ksp=y_ksp, mask_subsampling=sampling_mask, mask_brain=torch.ones_like(mask_brain),
+                                   TEs=TEs, sense=sensitivity_map, metadata=[])
+            output_np = output[args.n_steps - 1].to('cpu')
         else:
-            args.n_steps=1
+            args.n_steps = 1
             output = model.forward(torch.stack([R2star_map_init, S0_map_init, B0_map_target, phi_map_target], 1))
             output_np = output.to('cpu')
 
@@ -157,7 +160,7 @@ def evaluate(args, epoch, model, data_loader, writer):
             torch.cuda.reset_max_memory_allocated()
 
         del R2star_map_init, S0_map_init, B0_map_init, phi_map_init, R2star_map_target, S0_map_target, \
-        B0_map_target, phi_map_target, mask_brain, sampling_mask, TEs, sensitivity_map, fname, slice
+            B0_map_target, phi_map_target, mask_brain, sampling_mask, TEs, sensitivity_map, fname, slice
         torch.cuda.empty_cache()
 
     writer.add_scalar('Val_MSE', np.mean(mse_losses), epoch)
@@ -183,7 +186,7 @@ def save_model(args, exp_dir, epoch, model, optimizer, best_dev_loss, is_new_bes
 
 
 def build_model(args):
-    args.use_rim = False
+    # args.use_rim = True # args.use_rim = False
     if args.use_rim:
         if args.data_type == 'memmap':
             im_channels = args.n_coils
@@ -198,16 +201,16 @@ def build_model(args):
         # use u-net
         in_channels: int = 4
         out_channels: int = 4
-        num_filters: int = 64 # 16
+        num_filters: int = 64  # 16
         num_pool_layers: int = 2
         dropout_probability: float = 0.0
         model = UnetModel2d(in_channels, out_channels, num_filters, num_pool_layers, dropout_probability)
-        
-    return model.to(args.device)
+
+    return model
 
 
 def load_model(checkpoint_file):
-    checkpoint = torch.load(checkpoint_file)
+    checkpoint = torch.load(checkpoint_file, map_location=torch.device('cpu'))
     args = checkpoint['args']
     model = build_model(args)
     if args.data_parallel:
@@ -238,7 +241,7 @@ def main(args):
         checkpoint_path = os.path.join(args.exp_dir, 'model.pt')
     else:
         checkpoint_path = args.checkpoint
-    
+
     num_epochs_new = args.num_epochs
     if args.resume and os.path.exists(checkpoint_path):
         checkpoint, model, optimizer = load_model(checkpoint_path)
@@ -338,7 +341,8 @@ def create_arg_parser():
                         help="Choose to sum coils over rss or torch.sum")
     parser.add_argument('--sequence', type=str, choices=['MEGRE', 'FUTURE_SEQUENCES'], default='MEGRE',
                         help="Choose for which sequence to compute the parameter maps")
-    parser.add_argument('--TEs', type=tuple, default=(3.0, 11.5, 20.0, 28.5), help="Echo times (/ms) in the ME_GRE sequence.")
+    parser.add_argument('--TEs', type=tuple, default=(3.0, 11.5, 20.0, 28.5),
+                        help="Echo times (/ms) in the ME_GRE sequence.")
 
     return parser
 

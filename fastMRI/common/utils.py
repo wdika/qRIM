@@ -6,7 +6,6 @@ LICENSE file in the root directory of this source tree.
 """
 
 import h5py
-from pdb import set_trace as bp
 
 
 def save_reconstructions(reconstructions, out_dir):

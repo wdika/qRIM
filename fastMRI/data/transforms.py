@@ -7,7 +7,6 @@ LICENSE file in the root directory of this source tree.
 
 import numpy as np
 import torch
-from pdb import set_trace as bp
 
 
 def to_tensor(data):
@@ -125,7 +124,7 @@ def complex_abs(data):
     """
     assert data.size(-1) == 2
     # return (data ** 2).sum(dim=-1).sqrt()
-    
+
     data = (data ** 2).sum(dim=-1) + 1e-8
     return data.sqrt()
 

@@ -1,11 +1,9 @@
-import pathlib
 import random
-import torch
-import numpy as np
 
 import h5py
+import numpy as np
 from torch.utils.data import Dataset
-from pdb import set_trace as bp
+
 from fastMRI.data import transforms
 
 
@@ -43,25 +41,27 @@ class SliceData(Dataset):
         self.plane = "axial"
         files = list(root.rglob("*"))
         # please provide accordingly the filenames of the data.
-        files = [_ for _ in files if _.name.endswith('.h5') and self.plane in _.name and "maps" not in _.name and "kspmask" not in _.name and "rim_recon" not in str(_.parents[0]) and "SR_Pyqmri" not in str(_) and "modelBasedCS" not in str(_) and "cs_" not in str(_)]
+        files = [_ for _ in files if _.name.endswith(
+            '.h5') and self.plane in _.name and "maps" not in _.name and "kspmask" not in _.name and "rim_recon" not in str(
+            _.parents[0]) and "SR_Pyqmri" not in str(_) and "modelBasedCS" not in str(_) and "cs_" not in str(_)]
         if sample_rate < 1:
             random.shuffle(files)
             num_files = round(len(files) * sample_rate)
             files = files[:num_files]
-        
+
         self.centerlines = True
         for fname in sorted(files):
             if self.centerlines:
                 str_tmp = str(fname).replace('.', '_')
                 nums = [int(s) for s in str_tmp.split('_') if s.isdigit()]
-                axialcenterslices = 'axial' in str(fname) and nums[-1] >= 121 and nums[-1] < 172 -1 
-                coronalcenterslices = 'coronal' in str(fname) and nums[-1] >= 120 and nums[-1] < 171 -1
-                sagittalcenterslices = 'sagittal' in str(fname) and nums[-1] >= 92 and nums[-1] < 143 -1
+                axialcenterslices = 'axial' in str(fname) and nums[-1] >= 121 and nums[-1] < 172 - 1
+                coronalcenterslices = 'coronal' in str(fname) and nums[-1] >= 120 and nums[-1] < 171 - 1
+                sagittalcenterslices = 'sagittal' in str(fname) and nums[-1] >= 92 and nums[-1] < 143 - 1
             else:
                 axialcenterslices = True
                 coronalcenterslices = True
                 sagittalcenterslices = True
-                
+
             if axialcenterslices or coronalcenterslices or sagittalcenterslices:
                 num_slices = 1
                 if n_slices == 1:
@@ -83,20 +83,20 @@ class SliceData(Dataset):
             kspace = np.array(kspace)
             kspace = np.stack((kspace.real, kspace.imag), -1)
             kspace = transforms.to_tensor(kspace)
-            kspace = kspace.permute(0,3,1,2,4)  # [nr_TEs, channel, phase, slice, 2]
+            kspace = kspace.permute(0, 3, 1, 2, 4)  # [nr_TEs, channel, phase, slice, 2]
             scalingfactor = 10000
-            kspace = kspace/scalingfactor
+            kspace = kspace / scalingfactor
 
             sensitivity_map = data['sense']
             sensitivity_map = np.array(sensitivity_map)
-            sensitivity_map = np.stack((sensitivity_map.real, sensitivity_map.imag), -1) 
+            sensitivity_map = np.stack((sensitivity_map.real, sensitivity_map.imag), -1)
             sensitivity_map = np.float32(sensitivity_map)
             sensitivity_map = transforms.to_tensor(sensitivity_map)
-            sensitivity_map = sensitivity_map.permute(2,0,1,3)# [channel, phase, slice, 2]
+            sensitivity_map = sensitivity_map.permute(2, 0, 1, 3)  # [channel, phase, slice, 2]
 
             mask_brain = data['mask_brain']
             mask_brain = np.array(mask_brain)
-            mask_brain = np.float32(mask_brain)
+            mask_brain = np.abs(mask_brain).astype(np.float32)
             mask_brain = transforms.to_tensor(mask_brain)
 
         return self.transform(kspace, sensitivity_map, mask_brain, fname.name, fname, slice, n_slices=self.n_slices)

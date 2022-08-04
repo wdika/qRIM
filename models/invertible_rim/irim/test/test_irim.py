@@ -1,8 +1,7 @@
 import torch
 from torch.testing import assert_allclose
 
-from models.invertible_rim.irim import IRIM, InvertibleGradUpdate
-from models.invertible_rim.irim import InvertibleUnet
+from models.invertible_rim.irim import IRIM, InvertibleGradUpdate, InvertibleUnet
 from models.invertible_rim.irim.test.utils import create_model_and_i2l_copy, forward_reverse, model_gradients
 
 if torch.cuda.is_available():

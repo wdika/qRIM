@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from pdb import set_trace as bp
 
 
 class InputRNN(torch.nn.Module):
@@ -120,11 +119,11 @@ class ConvRNNCellBase(nn.Module):
 
     def determine_conv_class(self, n_dim):
 
-        if n_dim is 1:
+        if n_dim == 1:
             return nn.Conv1d
-        elif n_dim is 2:
+        elif n_dim == 2:
             return nn.Conv2d
-        elif n_dim is 3:
+        elif n_dim == 3:
             return nn.Conv3d
         else:
             NotImplementedError("No convolution of this dimensionality implemented")

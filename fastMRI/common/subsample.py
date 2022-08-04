@@ -7,7 +7,6 @@ LICENSE file in the root directory of this source tree.
 
 import numpy as np
 import torch
-from pdb import set_trace as bp
 
 
 class MaskFunc:
@@ -62,8 +61,7 @@ class MaskFunc:
         """
         if len(shape) < 3:
             raise ValueError('Shape should have 3 or more dimensions')
-        
-        
+
         self.rng.seed(seed)
         num_cols = shape[-2]
 
