@@ -11,6 +11,7 @@ import numbers
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from skimage.restoration import unwrap_phase
 from torch import nn
 from torch.nn import functional as F
@@ -174,18 +175,19 @@ def R2star_S0_mapping(image, TEs):
         R2star_map (torch.Tensor): The R2* map of the input images and TEs.
         S0_map (torch.Tensor): The S0 map of the input images and TEs.
     """
-
+    if image.shape[-1] == 2:
+        image = torch.view_as_real(image[..., 0] + 1j * image[..., 1])  # ensure stacked complex data
     scaling = 1e-3
     image_abs_flatten = torch.flatten(transforms.complex_abs(image), start_dim=1, end_dim=-1)
     R2star_map = np.zeros([image_abs_flatten.shape[1]])
     S0_map = np.zeros([image_abs_flatten.shape[1]])
     for i in range(image_abs_flatten.shape[1]):
-        R2star_map[i], S0_map[i] = np.polyfit(TEs * scaling, np.log(image_abs_flatten[:, i]), 1,
-                                              w=np.sqrt(image_abs_flatten[:, i]))
+        R2star_map[i], S0_map[i] = np.polyfit(
+            TEs * scaling, np.log(image_abs_flatten[:, i]), 1, w=np.sqrt(image_abs_flatten[:, i])
+        )
     S0_map = np.exp(S0_map)
-    R2star_map = np.reshape(-R2star_map, image.shape[1:4])
-    S0_map = np.reshape(S0_map, image.shape[1:4])
-
+    R2star_map = np.reshape(-R2star_map, image.shape[1:-1])
+    S0_map = np.reshape(S0_map, image.shape[1:-1])
     return R2star_map, S0_map
 
 
@@ -203,6 +205,11 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
         BO_map (torch.Tensor): The B0 map of the input images and TEs.
         phi_map (torch.Tensor): The Phi map of the input images and TEs.
     """
+    if image.dim() == 4:
+        image = image.unsqueeze(1)  # add a dummy batch dimension
+
+    if image.shape[-1] == 2:
+        image = torch.view_as_real(image[..., 0] + 1j * image[..., 1])  # ensure stacked complex data
 
     TEnotused = 3 if fullysample else 3
 
@@ -224,10 +231,12 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
     phase = torch.from_numpy(
         np.angle(image[..., 0].cpu().detach().numpy() + 1j * image[..., 1].cpu().detach().numpy())).float().to(
         image.device)
+
     sz_phase = phase.shape
 
     B0_map = torch.zeros(sz_phase[1], sz_phase[2], sz_phase[3]).to(image.device)
     phi_map = torch.zeros(sz_phase[1], sz_phase[2], sz_phase[3]).to(image.device)
+
     # unwrap phases (unwrap_phase doesn't support batched operation, so loop over batch size)
     for j in range(sz_phase[1]):  # loop over batch size
         phase_sample = phase[:, j, :, :].squeeze()  # since umwrap_phase accepts only 3D or 2D array
@@ -246,8 +255,8 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
         for i in range(0, phase_unwrapped.shape[0] - TEnotused):
             phase_diff_set.append(torch.flatten(phase_unwrapped[i + 1] - phase_unwrapped[i]))
             phase_diff_set[i] = phase_diff_set[i] - torch.round(
-                torch.sum(phase_diff_set[i] * torch.flatten(mask_brain_descale)) / torch.sum(
-                    mask_brain_descale) / 2 / np.pi) * 2 * np.pi
+                torch.abs(torch.sum(phase_diff_set[i] * torch.flatten(mask_brain_descale)) / torch.sum(mask_brain_descale) / 2 / np.pi)
+            ) * 2 * np.pi
             TE_diff.append(TEs[i + 1] - TEs[i])
 
         phase_diff_set = torch.stack(phase_diff_set, 0).to(image.device)
@@ -258,7 +267,7 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
         ls = LeastSquares()
         B0_map_tmp = ls.lstq_pinv(phase_diff_set.unsqueeze(2).permute(1, 0, 2), TE_diff.unsqueeze(1) * scaling)
         B0_map[j] = B0_map_tmp[:, 0, 0].reshape(sz_image[-3], sz_image[-2]).to(image.device)
-        B0_map[j] = B0_map[j] * mask_head
+        B0_map[j] = B0_map[j] * torch.abs(mask_head)
         # obtain phi map
         phi_map[j] = phase_unwrapped[0] - scaling * TEs[0] * B0_map[j].to(image.device)
 

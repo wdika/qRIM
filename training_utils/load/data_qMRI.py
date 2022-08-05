@@ -2,6 +2,7 @@ import random
 
 import h5py
 import numpy as np
+from matplotlib import pyplot as plt
 from torch.utils.data import Dataset
 
 from fastMRI.data import transforms
@@ -80,6 +81,7 @@ class SliceData(Dataset):
         kspname = 'ksp'
         with h5py.File(fname, 'r') as data:
             kspace = data[kspname]
+
             kspace = np.array(kspace)
             kspace = np.stack((kspace.real, kspace.imag), -1)
             kspace = transforms.to_tensor(kspace)

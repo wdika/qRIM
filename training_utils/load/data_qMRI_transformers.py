@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 import torch
-
+import matplotlib.pyplot as plt
 from fastMRI.data import transforms
 from training_utils.linear_mapping import R2star_B0_real_S0_complex_mapping, R2star_S0_mapping_from_ksp
 
@@ -85,13 +85,13 @@ class Transform:
 
                     subsampling_mask[echo_nr, ...] = sampling_mask_echo.squeeze()
                 # save mask
-                with h5py.File(str(fname_full), 'r+') as data:
-                    if 'seeds_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
-                        data.__delitem__('seeds_acce_' + str(self.acceleration))
-                    data.create_dataset('seeds_acce_' + str(self.acceleration), data=seeds)
-                    if 'subsampling_mask_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('subsampling_mask_acce_' + str(self.acceleration))
-                    data.create_dataset('subsampling_mask_acce_' + str(self.acceleration), data=subsampling_mask)
+                # with h5py.File(str(fname_full), 'r+') as data:
+                #     if 'seeds_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
+                #         data.__delitem__('seeds_acce_' + str(self.acceleration))
+                #     data.create_dataset('seeds_acce_' + str(self.acceleration), data=seeds)
+                #     if 'subsampling_mask_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('subsampling_mask_acce_' + str(self.acceleration))
+                #     data.create_dataset('subsampling_mask_acce_' + str(self.acceleration), data=subsampling_mask)
 
             # Apply mask
             masked_kspace = kspace  # kspace*subsampling_mask.unsqueeze(1).unsqueeze(-1)
@@ -103,8 +103,10 @@ class Transform:
             #     data = h5py.File(reconimgs_filename)
             #     data.keys()
             #     reconimgs_echo = data['reconstruction']
-            #    reconimgs[echo_nr, ...] = torch.from_numpy(np.array(reconimgs_echo))/10000
-            reconimgs = torch.sqrt(torch.sum(torch.fft.ifft2(masked_kspace, dim=(2, 3)) ** 2, dim=4))
+            #     reconimgs[echo_nr, ...] = torch.from_numpy(np.array(reconimgs_echo))/10000
+
+            reconimgs = torch.sqrt(torch.sum(torch.fft.ifft2(masked_kspace, dim=(2, 3)) ** 2, dim=1))/10000
+            reconimgs = torch.view_as_real(reconimgs[..., 0] + 1j * reconimgs[..., 1])
 
             # load mask for the brain region
             with h5py.File(str(fname_full), 'r') as data:
@@ -128,21 +130,23 @@ class Transform:
                 print('except in loading init maps: ' + str(fname_full))
 
                 R2star_map_init, S0_map_init, B0_map_init, phi_map_init = R2star_B0_real_S0_complex_mapping(
-                    torch.view_as_real(reconimgs).permute(0, 2, 3, 1, 4), torch.from_numpy(self.TEs),
+                    # torch.view_as_real(reconimgs).permute(0, 2, 3, 1, 4), torch.from_numpy(self.TEs),
+                    reconimgs, torch.from_numpy(self.TEs),
                     torch.from_numpy(mask_brain), torch.from_numpy(mask_head), fullysample=True)
-                with h5py.File(str(fname_full), 'r+') as data:
-                    if 'R2star_map_init_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
-                        data.__delitem__('R2star_map_init_acce_' + str(self.acceleration))
-                    data.create_dataset('R2star_map_init_acce_' + str(self.acceleration), data=R2star_map_init)
-                    if 'S0_map_init_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('S0_map_init_acce_' + str(self.acceleration))
-                    data.create_dataset('S0_map_init_acce_' + str(self.acceleration), data=S0_map_init)
-                    if 'B0_map_init_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('B0_map_init_acce_' + str(self.acceleration))
-                    data.create_dataset('B0_map_init_acce_' + str(self.acceleration), data=B0_map_init)
-                    if 'phi_map_init_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('phi_map_init_acce_' + str(self.acceleration))
-                    data.create_dataset('phi_map_init_acce_' + str(self.acceleration), data=phi_map_init)
+
+                # with h5py.File(str(fname_full), 'r+') as data:
+                #     if 'R2star_map_init_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
+                #         data.__delitem__('R2star_map_init_acce_' + str(self.acceleration))
+                #     data.create_dataset('R2star_map_init_acce_' + str(self.acceleration), data=R2star_map_init)
+                #     if 'S0_map_init_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('S0_map_init_acce_' + str(self.acceleration))
+                #     data.create_dataset('S0_map_init_acce_' + str(self.acceleration), data=S0_map_init)
+                #     if 'B0_map_init_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('B0_map_init_acce_' + str(self.acceleration))
+                #     data.create_dataset('B0_map_init_acce_' + str(self.acceleration), data=B0_map_init)
+                #     if 'phi_map_init_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('phi_map_init_acce_' + str(self.acceleration))
+                #     data.create_dataset('phi_map_init_acce_' + str(self.acceleration), data=phi_map_init)
 
             # prepare the reference maps
             if 'R2star_map_target_acce_' + str(self.acceleration) in data:
@@ -162,20 +166,20 @@ class Transform:
                     torch.from_numpy(mask_head),
                     fullysample=True, option=0
                 )
-                with h5py.File(str(fname_full), 'r+') as data:
-                    if 'R2star_map_target_acce_' + str(
-                            self.acceleration) in data.keys():  # delete the node if already exists
-                        data.__delitem__('R2star_map_target_acce_' + str(self.acceleration))
-                    data.create_dataset('R2star_map_target_acce_' + str(self.acceleration), data=R2star_map_target)
-                    if 'S0_map_target_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('S0_map_target_acce_' + str(self.acceleration))
-                    data.create_dataset('S0_map_target_acce_' + str(self.acceleration), data=S0_map_target)
-                    if 'B0_map_target_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('B0_map_target_acce_' + str(self.acceleration))
-                    data.create_dataset('B0_map_target_acce_' + str(self.acceleration), data=B0_map_target)
-                    if 'phi_map_target_acce_' + str(self.acceleration) in data.keys():
-                        data.__delitem__('phi_map_target_acce_' + str(self.acceleration))
-                    data.create_dataset('phi_map_target_acce_' + str(self.acceleration), data=phi_map_target)
+                # with h5py.File(str(fname_full), 'r+') as data:
+                #     if 'R2star_map_target_acce_' + str(
+                #             self.acceleration) in data.keys():  # delete the node if already exists
+                #         data.__delitem__('R2star_map_target_acce_' + str(self.acceleration))
+                #     data.create_dataset('R2star_map_target_acce_' + str(self.acceleration), data=R2star_map_target)
+                #     if 'S0_map_target_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('S0_map_target_acce_' + str(self.acceleration))
+                #     data.create_dataset('S0_map_target_acce_' + str(self.acceleration), data=S0_map_target)
+                #     if 'B0_map_target_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('B0_map_target_acce_' + str(self.acceleration))
+                #     data.create_dataset('B0_map_target_acce_' + str(self.acceleration), data=B0_map_target)
+                #     if 'phi_map_target_acce_' + str(self.acceleration) in data.keys():
+                #         data.__delitem__('phi_map_target_acce_' + str(self.acceleration))
+                #     data.create_dataset('phi_map_target_acce_' + str(self.acceleration), data=phi_map_target)
 
         return R2star_map_init.squeeze(), S0_map_init.squeeze(), B0_map_init.squeeze(), phi_map_init.squeeze(), \
                R2star_map_target.squeeze(), S0_map_target.squeeze(), B0_map_target.squeeze(), phi_map_target.squeeze(), \

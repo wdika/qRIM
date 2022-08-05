@@ -113,6 +113,15 @@ def image_loss(image, target, mask_brain, args):
                      }
     loss_fun = loss_selector[args.loss]
 
+    if image.dim() == 3:
+        image = image.unsqueeze(0)  # add batch dimension
+
+    if target.dim() == 3:
+        target = target.unsqueeze(0)
+
+    if mask_brain.dim() == 3:
+        mask_brain = mask_brain.unsqueeze(0)
+
     mask = torch.ones_like(target)
     if args.loss == 'ssim':
         normalizer = target.flatten(2).max(dim=2, keepdim=True)[0].unsqueeze(-1)
