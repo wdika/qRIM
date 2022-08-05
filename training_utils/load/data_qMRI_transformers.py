@@ -146,6 +146,7 @@ class Transform:
                 kspace = kspace[..., 0] + 1j * kspace[..., 1]
                 imspace = torch.fft.ifft2(kspace, dim=(2, 3))
                 imspace = torch.stack([imspace.real, imspace.imag], dim=-1)
+                kspace = torch.stack([kspace.real, kspace.imag], dim=-1)
 
                 R2star_map_target, S0_map_target, B0_map_target, phi_map_target = R2star_S0_mapping_from_ksp(
                     imspace, torch.from_numpy(self.TEs), sense, torch.from_numpy(mask_brain),
