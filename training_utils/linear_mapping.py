@@ -126,8 +126,9 @@ class LeastSquares:
         if Y.ndim == 2:
             return np.matmul(np.linalg.pinv(Y), A)
         else:
-            return np.matmul(np.matmul(np.linalg.inv(np.matmul(np.transpose(Y.conj(), [0, 2, 1]), Y)),
-                                       np.transpose(Y.conj(), [0, 2, 1])), A)
+            x = np.matmul(np.transpose(Y.conj(), [0, 2, 1]), Y)
+            x = np.matmul(np.linalg.inv(x), np.transpose(Y.conj(), [0, 2, 1]))
+            return np.dot(x, A)
 
 
 def S0_mapping_complex(image, TEs, R2star_map, B0_map):
@@ -146,9 +147,14 @@ def S0_mapping_complex(image, TEs, R2star_map, B0_map):
     R2star_B0_complex_map_flatten = R2star_B0_complex_map.flatten()
     scaling = 1e-3
     TEs_r2 = np.expand_dims(TEs[0:4], axis=1) * - R2star_B0_complex_map_flatten
-    S0_map = ls.lstq_pinv_complex_np(np.expand_dims(np.transpose(image_complex_flatten, [1, 0]), axis=2),
-                                     np.exp(scaling * np.expand_dims(np.transpose(TEs_r2, [1, 0]), axis=2)))
-    S0_map = S0_map[:, 0, 0].reshape(sz_image[1:-1])
+    S0_map = ls.lstq_pinv_complex_np(
+        np.expand_dims(np.transpose(image_complex_flatten, [1, 0]), axis=2),
+        np.exp(scaling * np.expand_dims(np.transpose(TEs_r2, [1, 0]), axis=2))
+    )
+    if sz_image[-1] == 2:
+        S0_map = S0_map[:, 0, 0].reshape(sz_image[1:-1])
+    else:
+        S0_map = S0_map[:, 0, 0, 0].reshape(sz_image[1:])
 
     return torch.from_numpy(np.float32(S0_map.real)), torch.from_numpy(np.float32(S0_map.imag))
 
@@ -175,19 +181,26 @@ def R2star_S0_mapping(image, TEs):
         R2star_map (torch.Tensor): The R2* map of the input images and TEs.
         S0_map (torch.Tensor): The S0 map of the input images and TEs.
     """
-    if image.shape[-1] == 2:
-        image = torch.view_as_real(image[..., 0] + 1j * image[..., 1])  # ensure stacked complex data
+    # if image.shape[-1] == 2:
+    #     image = torch.view_as_real(image[..., 0] + 1j * image[..., 1])  # ensure stacked complex data
+
     scaling = 1e-3
-    image_abs_flatten = torch.flatten(transforms.complex_abs(image), start_dim=1, end_dim=-1)
+
+    image = torch.abs(torch.view_as_complex(image)) + 1e-8
+
+    image_abs_flatten = torch.flatten(image, start_dim=1, end_dim=-1)
+
     R2star_map = np.zeros([image_abs_flatten.shape[1]])
     S0_map = np.zeros([image_abs_flatten.shape[1]])
+
     for i in range(image_abs_flatten.shape[1]):
         R2star_map[i], S0_map[i] = np.polyfit(
             TEs * scaling, np.log(image_abs_flatten[:, i]), 1, w=np.sqrt(image_abs_flatten[:, i])
         )
     S0_map = np.exp(S0_map)
-    R2star_map = np.reshape(-R2star_map, image.shape[1:-1])
-    S0_map = np.reshape(S0_map, image.shape[1:-1])
+    R2star_map = np.reshape(-R2star_map, image.shape[1:4])
+    S0_map = np.reshape(S0_map, image.shape[1:4])
+
     return R2star_map, S0_map
 
 
@@ -205,11 +218,8 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
         BO_map (torch.Tensor): The B0 map of the input images and TEs.
         phi_map (torch.Tensor): The Phi map of the input images and TEs.
     """
-    if image.dim() == 4:
+    if image.dim() < 5:
         image = image.unsqueeze(1)  # add a dummy batch dimension
-
-    if image.shape[-1] == 2:
-        image = torch.view_as_real(image[..., 0] + 1j * image[..., 1])  # ensure stacked complex data
 
     TEnotused = 3 if fullysample else 3
 
@@ -274,19 +284,20 @@ def B0_phi_mapping(image, TEs, mask_brain, mask_head, fullysample):
     return B0_map, phi_map
 
 
-def R2star_S0_mapping_from_ksp(kspace, TEs, sense, mask_brain, mask_head, fullysample=True, option=0):
+def R2star_S0_mapping_from_ksp(imspace, TEs, sense, mask_brain, mask_head, fullysample=True, option=0):
     # insert a dimension of batch, if there is not one there already.
     # the full dims of kspace should be [nr_TEs, nr_batches, nr_coils, nr_phases, nr_slices, 2], 2 is for real and imag components.
-    if kspace.dim() == 5:
-        kspace = kspace.unsqueeze(1)
+    if imspace.dim() == 5:
+        imspace = imspace.unsqueeze(1)
 
     TEs_size = TEs.size(0) if type(TEs) == torch.Tensor else len(TEs)
-    assert kspace.size(0) == TEs_size
+    assert imspace.size(0) == TEs_size
 
-    # transform kspace into image
-    image = transforms.ifft2(kspace)
+    image = imspace.clone()
 
-    mask_brain_B0 = mask_brain
+    mask_brain = torch.abs(mask_brain)
+    mask_brain_B0 = mask_brain.clone()
+
     mask_brain = torch.ones_like(mask_brain)
     if mask_brain.dim() == 2:  # to recover the batch dimension if batchsize==1
         mask_brain_tmp = mask_brain.unsqueeze(0)
@@ -294,6 +305,7 @@ def R2star_S0_mapping_from_ksp(kspace, TEs, sense, mask_brain, mask_head, fullys
         mask_brain_tmp = mask_brain
     mask_brain_tmp = mask_brain_tmp.repeat(image.shape[0], image.shape[2], image.shape[-1], 1, 1, 1).permute(0, 3, 1,
                                                                                                              4, 5, 2)
+
     image = image * mask_brain_tmp
 
     # recon the coil-combined image

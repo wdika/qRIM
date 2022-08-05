@@ -9,6 +9,52 @@ import numpy as np
 import torch
 
 
+def complex_mul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """
+    Complex multiplication.
+
+    This multiplies two complex tensors assuming that they are both stored as
+    real arrays with the last dimension being the complex dimension.
+
+    Parameters
+    ----------
+    x: A PyTorch tensor with the last dimension of size 2.
+    y: A PyTorch tensor with the last dimension of size 2.
+
+    Returns
+    -------
+    A PyTorch tensor with the last dimension of size 2.
+    """
+    if not x.shape[-1] == y.shape[-1] == 2:
+        raise ValueError("Tensors do not have separate complex dim.")
+
+    re = x[..., 0] * y[..., 0] - x[..., 1] * y[..., 1]
+    im = x[..., 0] * y[..., 1] + x[..., 1] * y[..., 0]
+
+    return torch.stack((re, im), dim=-1)
+
+
+def complex_conj(x: torch.Tensor) -> torch.Tensor:
+    """
+    Complex conjugate.
+
+    This applies the complex conjugate assuming that the input array has the
+    last dimension as the complex dimension.
+
+    Parameters
+    ----------
+    x: A PyTorch tensor with the last dimension of size 2.
+
+    Returns
+    -------
+    A PyTorch tensor with the last dimension of size 2.
+    """
+    if x.shape[-1] != 2:
+        raise ValueError("Tensor does not have separate complex dim.")
+
+    return torch.stack((x[..., 0], -x[..., 1]), dim=-1)
+
+
 def to_tensor(data):
     """
     Convert numpy array to PyTorch tensor. For complex arrays, the real and imaginary parts
@@ -87,7 +133,7 @@ def fft2(data):
     """
     assert data.size(-1) == 2
     # data = ifftshift(data, dim=(-3, -2))
-    data = torch.fft.fft2(data, norm="ortho", dim=(-3, -2))
+    data = torch.fft.fft2(data, norm=None, dim=(-3, -2))
     data = fftshift(data, dim=(-3, -2))
     return data
 
@@ -106,7 +152,7 @@ def ifft2(data):
     """
     assert data.size(-1) == 2
     data = ifftshift(data, dim=(-3, -2))
-    data = torch.fft.ifft2(data, norm="ortho", dim=(-3, -2))
+    data = torch.fft.ifft2(data, norm=None, dim=(-3, -2))
     # data = fftshift(data, dim=(-3, -2))
     return data
 

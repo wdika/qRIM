@@ -2,10 +2,12 @@ import random
 
 import h5py
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import Dataset
 
 from fastMRI.data import transforms
+from fastMRI.data.transforms import complex_conj, complex_mul
 
 
 class SliceData(Dataset):
@@ -39,7 +41,7 @@ class SliceData(Dataset):
         self.examples = []
         self.n_slices = n_slices
         self.kspace_all = []
-        self.plane = "axial"
+        self.plane = "sagittal"
         files = list(root.rglob("*"))
         # please provide accordingly the filenames of the data.
         files = [_ for _ in files if _.name.endswith(
@@ -55,15 +57,16 @@ class SliceData(Dataset):
             if self.centerlines:
                 str_tmp = str(fname).replace('.', '_')
                 nums = [int(s) for s in str_tmp.split('_') if s.isdigit()]
-                axialcenterslices = 'axial' in str(fname) and nums[-1] >= 121 and nums[-1] < 172 - 1
-                coronalcenterslices = 'coronal' in str(fname) and nums[-1] >= 120 and nums[-1] < 171 - 1
+                # axialcenterslices = 'axial' in str(fname) and nums[-1] >= 121 and nums[-1] < 172 - 1
+                # coronalcenterslices = 'coronal' in str(fname) and nums[-1] >= 120 and nums[-1] < 171 - 1
                 sagittalcenterslices = 'sagittal' in str(fname) and nums[-1] >= 92 and nums[-1] < 143 - 1
             else:
-                axialcenterslices = True
-                coronalcenterslices = True
+                # axialcenterslices = True
+                # coronalcenterslices = True
                 sagittalcenterslices = True
 
-            if axialcenterslices or coronalcenterslices or sagittalcenterslices:
+            # if axialcenterslices or coronalcenterslices or sagittalcenterslices:
+            if sagittalcenterslices:
                 num_slices = 1
                 if n_slices == 1:
                     self.examples += [(fname, slice) for slice in range(num_slices)]
@@ -83,22 +86,24 @@ class SliceData(Dataset):
             kspace = data[kspname]
 
             kspace = np.array(kspace)
-            kspace = np.stack((kspace.real, kspace.imag), -1)
-            kspace = transforms.to_tensor(kspace)
+            kspace = np.stack([kspace.real, kspace.imag], axis=-1)
+            kspace = torch.from_numpy(kspace)
+            # kspace = transforms.to_tensor(kspace)
             kspace = kspace.permute(0, 3, 1, 2, 4)  # [nr_TEs, channel, phase, slice, 2]
             scalingfactor = 10000
             kspace = kspace / scalingfactor
 
             sensitivity_map = data['sense']
             sensitivity_map = np.array(sensitivity_map)
-            sensitivity_map = np.stack((sensitivity_map.real, sensitivity_map.imag), -1)
-            sensitivity_map = np.float32(sensitivity_map)
-            sensitivity_map = transforms.to_tensor(sensitivity_map)
+            sensitivity_map = np.stack([sensitivity_map.real, sensitivity_map.imag], axis=-1)
+            sensitivity_map = torch.from_numpy(sensitivity_map)
+            # sensitivity_map = transforms.to_tensor(sensitivity_map)
             sensitivity_map = sensitivity_map.permute(2, 0, 1, 3)  # [channel, phase, slice, 2]
 
             mask_brain = data['mask_brain']
             mask_brain = np.array(mask_brain)
             mask_brain = np.abs(mask_brain).astype(np.float32)
+
             mask_brain = transforms.to_tensor(mask_brain)
 
         return self.transform(kspace, sensitivity_map, mask_brain, fname.name, fname, slice, n_slices=self.n_slices)

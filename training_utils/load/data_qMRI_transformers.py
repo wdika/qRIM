@@ -68,33 +68,28 @@ class Transform:
                 subsampling_mask = torch.from_numpy(np.float32(subsampling_mask))
             else:
                 print('except in loading subsampling mask: ' + str(fname_full))
-                seeds = []
-                subsampling_mask = torch.zeros(kspace.shape[0], kspace.shape[-3],
-                                               kspace.shape[-2])  # nr_of_echoes, size of phase, size of slices
-                for echo_nr in range(kspace.shape[0]):
-                    fname_for_seed = fname + '_' + str(echo_nr)
-                    seed = None if not self.use_seed else tuple(map(ord, fname_for_seed))
-                    seeds.append(seed)
-                    np.random.seed(seed)
-                    if self.mask_func is not None:
-                        _, sampling_mask_echo = transforms.apply_mask_custom(kspace[:, ...], self.mask_func, seed)
-                    else:
-                        sampling_mask_echo = kspace != 0
-                        sampling_mask_echo = sampling_mask_echo.to(kspace)[..., :1, :, :1]
-                        sampling_mask_echo = sampling_mask_echo[:1, ...]
+                # seeds = []
+                # subsampling_mask = torch.zeros(kspace.shape[0], kspace.shape[-3],
+                #                                kspace.shape[-2])  # nr_of_echoes, size of phase, size of slices
+                # for echo_nr in range(kspace.shape[0]):
+                #     fname_for_seed = fname + '_' + str(echo_nr)
+                #     seed = None if not self.use_seed else tuple(map(ord, fname_for_seed))
+                #     seeds.append(seed)
+                #     np.random.seed(seed)
+                #     if self.mask_func is not None:
+                #         _, sampling_mask_echo = transforms.apply_mask_custom(kspace[:, ...], self.mask_func, seed)
+                #     else:
+                #         sampling_mask_echo = kspace != 0
+                #         sampling_mask_echo = sampling_mask_echo.to(kspace)[..., :1, :, :1]
+                #         sampling_mask_echo = sampling_mask_echo[:1, ...]
+                #
+                #     subsampling_mask[echo_nr, ...] = sampling_mask_echo.squeeze()
 
-                    subsampling_mask[echo_nr, ...] = sampling_mask_echo.squeeze()
-                # save mask
-                # with h5py.File(str(fname_full), 'r+') as data:
-                #     if 'seeds_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
-                #         data.__delitem__('seeds_acce_' + str(self.acceleration))
-                #     data.create_dataset('seeds_acce_' + str(self.acceleration), data=seeds)
-                #     if 'subsampling_mask_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('subsampling_mask_acce_' + str(self.acceleration))
-                #     data.create_dataset('subsampling_mask_acce_' + str(self.acceleration), data=subsampling_mask)
+                subsampling_mask = torch.ones([kspace.shape[2], kspace.shape[3]]).unsqueeze(0).unsqueeze(0).unsqueeze(-1).byte()
 
             # Apply mask
-            masked_kspace = kspace  # kspace*subsampling_mask.unsqueeze(1).unsqueeze(-1)
+            # masked_kspace = kspace*subsampling_mask.unsqueeze(1).unsqueeze(-1)
+            masked_kspace = kspace*subsampling_mask
 
             # load RIM recon images (for initialization of qRIM maps (at time step 0) )
             # reconimgs = torch.zeros(kspace.shape[0], kspace.shape[2], kspace.shape[3], kspace.shape[4])
@@ -105,8 +100,10 @@ class Transform:
             #     reconimgs_echo = data['reconstruction']
             #     reconimgs[echo_nr, ...] = torch.from_numpy(np.array(reconimgs_echo))/10000
 
-            reconimgs = torch.sqrt(torch.sum(torch.fft.ifft2(masked_kspace, dim=(2, 3)) ** 2, dim=1))/10000
-            reconimgs = torch.view_as_real(reconimgs[..., 0] + 1j * reconimgs[..., 1])
+            masked_kspace = masked_kspace[..., 0] + 1j * masked_kspace[..., 1]
+            pred = torch.fft.ifft2(masked_kspace, dim=(2, 3))
+            pred = torch.stack([pred.real, pred.imag], dim=-1)
+            reconimgs = torch.sum(transforms.complex_mul(pred, transforms.complex_conj(sense)), 1)/10000
 
             # load mask for the brain region
             with h5py.File(str(fname_full), 'r') as data:
@@ -128,25 +125,9 @@ class Transform:
                 phi_map_init = torch.from_numpy(np.float32(phi_map_init))
             else:
                 print('except in loading init maps: ' + str(fname_full))
-
                 R2star_map_init, S0_map_init, B0_map_init, phi_map_init = R2star_B0_real_S0_complex_mapping(
-                    # torch.view_as_real(reconimgs).permute(0, 2, 3, 1, 4), torch.from_numpy(self.TEs),
-                    reconimgs, torch.from_numpy(self.TEs),
-                    torch.from_numpy(mask_brain), torch.from_numpy(mask_head), fullysample=True)
-
-                # with h5py.File(str(fname_full), 'r+') as data:
-                #     if 'R2star_map_init_acce_' + str(self.acceleration) in data.keys():  # delete the node if already exists
-                #         data.__delitem__('R2star_map_init_acce_' + str(self.acceleration))
-                #     data.create_dataset('R2star_map_init_acce_' + str(self.acceleration), data=R2star_map_init)
-                #     if 'S0_map_init_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('S0_map_init_acce_' + str(self.acceleration))
-                #     data.create_dataset('S0_map_init_acce_' + str(self.acceleration), data=S0_map_init)
-                #     if 'B0_map_init_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('B0_map_init_acce_' + str(self.acceleration))
-                #     data.create_dataset('B0_map_init_acce_' + str(self.acceleration), data=B0_map_init)
-                #     if 'phi_map_init_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('phi_map_init_acce_' + str(self.acceleration))
-                #     data.create_dataset('phi_map_init_acce_' + str(self.acceleration), data=phi_map_init)
+                    reconimgs, torch.from_numpy(self.TEs), torch.from_numpy(mask_brain), torch.from_numpy(mask_head),
+                    fullysample=True)
 
             # prepare the reference maps
             if 'R2star_map_target_acce_' + str(self.acceleration) in data:
@@ -161,25 +142,16 @@ class Transform:
                 phi_map_target = torch.from_numpy(np.float32(phi_map_target))
             else:
                 print('except in loading target maps: ' + str(fname_full))
+
+                kspace = kspace[..., 0] + 1j * kspace[..., 1]
+                imspace = torch.fft.ifft2(kspace, dim=(2, 3))
+                imspace = torch.stack([imspace.real, imspace.imag], dim=-1)
+
                 R2star_map_target, S0_map_target, B0_map_target, phi_map_target = R2star_S0_mapping_from_ksp(
-                    kspace, torch.from_numpy(self.TEs), sense, torch.from_numpy(mask_brain),
+                    imspace, torch.from_numpy(self.TEs), sense, torch.from_numpy(mask_brain),
                     torch.from_numpy(mask_head),
                     fullysample=True, option=0
                 )
-                # with h5py.File(str(fname_full), 'r+') as data:
-                #     if 'R2star_map_target_acce_' + str(
-                #             self.acceleration) in data.keys():  # delete the node if already exists
-                #         data.__delitem__('R2star_map_target_acce_' + str(self.acceleration))
-                #     data.create_dataset('R2star_map_target_acce_' + str(self.acceleration), data=R2star_map_target)
-                #     if 'S0_map_target_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('S0_map_target_acce_' + str(self.acceleration))
-                #     data.create_dataset('S0_map_target_acce_' + str(self.acceleration), data=S0_map_target)
-                #     if 'B0_map_target_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('B0_map_target_acce_' + str(self.acceleration))
-                #     data.create_dataset('B0_map_target_acce_' + str(self.acceleration), data=B0_map_target)
-                #     if 'phi_map_target_acce_' + str(self.acceleration) in data.keys():
-                #         data.__delitem__('phi_map_target_acce_' + str(self.acceleration))
-                #     data.create_dataset('phi_map_target_acce_' + str(self.acceleration), data=phi_map_target)
 
         return R2star_map_init.squeeze(), S0_map_init.squeeze(), B0_map_init.squeeze(), phi_map_init.squeeze(), \
                R2star_map_target.squeeze(), S0_map_target.squeeze(), B0_map_target.squeeze(), phi_map_target.squeeze(), \
