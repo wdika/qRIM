@@ -21,10 +21,6 @@ from scripts.train_model import load_model
 from training_utils.helpers import image_loss
 from training_utils.load.data_qMRI_loaders import create_testing_sense_loaders
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
-torch.backends.cudnn.benchmark = False
-
 
 def run_rim(args, model, data_loader):
     model.eval()
@@ -201,7 +197,7 @@ def create_arg_parser():
     parser.add_argument('--out-dir', type=pathlib.Path, required=True,
                         help='Path to save the reconstructions to')
     parser.add_argument('--batch-size', default=2, type=int, help='Mini-batch size')
-    parser.add_argument('--device', type=str, default='cuda', help='Which device to run on')
+    parser.add_argument('--device', type=str, default='cuda:3', help='Which device to run on')
     parser.add_argument('--data_parallel', action='store_true',
                         help='If set, use multiple GPUs using data parallelism')
     parser.add_argument('--coil_sum_method', type=str, choices=['rss', 'sum'], default='rss',

@@ -156,4 +156,4 @@ class Transform:
 
         return R2star_map_init.squeeze(), S0_map_init.squeeze(), B0_map_init.squeeze(), phi_map_init.squeeze(), \
                R2star_map_target.squeeze(), S0_map_target.squeeze(), B0_map_target.squeeze(), phi_map_target.squeeze(), \
-               kspace, mask_brain, subsampling_mask, self.TEs, sense, fname, slice
+               kspace, mask_brain, subsampling_mask.squeeze(1).squeeze(-1), self.TEs, sense, fname, slice
